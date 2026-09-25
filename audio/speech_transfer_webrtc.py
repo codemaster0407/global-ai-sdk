@@ -22,6 +22,7 @@ from aiohttp import web
 from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamError
 from av import AudioResampler
+from audio.eleven_labs.realtime_stt_transcription import main
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 RECORDINGS_DIR = os.path.join(os.path.dirname(ROOT), 'data', 'audio_files')
