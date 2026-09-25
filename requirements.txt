@@ -1,0 +1,5 @@
+elevenlabs
+python-dotenv
+ffmpeg
+aiortc
+aiohttp

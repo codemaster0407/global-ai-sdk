@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebRTC Voice Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+    button { font-size: 16px; padding: 10px 20px; margin-right: 8px; }
+    #log { margin-top: 16px; font-family: monospace; font-size: 13px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>WebRTC Voice Test</h2>
+  <p>Streams your microphone to the server. The recording is saved in <code>data/audio_files/</code>.</p>
+  <button id="start">Start</button>
+  <button id="stop" disabled>Stop</button>
+  <div id="log"></div>
+
+<script>
+  // Point this at your server when the page is hosted elsewhere, e.g. 'https://192.168.1.20:8080'
+  const SERVER_URL = '';
+
+  let pc = null;
+  let stream = null;
+  const log = (msg) => { document.getElementById('log').textContent += msg + '\n'; };
+
+  async function start() {
+    if (!navigator.mediaDevices) {
+      throw new Error('Microphone blocked: open this page over https:// or on http://localhost');
+    }
+    stream =await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+
+    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.onconnectionstatechange = () => log('connection: ' + pc.connectionState);
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+    await pc.setLocalDescription(await pc.createOffer());
+
+    // Wait for ICE gathering so the offer contains all candidates (no trickle ICE needed)
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') resolve();
+      });
+    });
+
+    const res = await fetch(SERVER_URL + '/offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
+    });
+    const answer = await res.json();
+    log('session: ' + answer.session_id);
+    await pc.setRemoteDescription(answer);
+  }
+
+  function stop() {
+    stream?.getTracks().forEach((t) => t.stop());
+    pc?.close();
+    pc = null;
+    log('stopped');
+  }
+
+  document.getElementById('start').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await start();
+      document.getElementById('stop').disabled = false;
+    } catch (err) {
+      log('error: ' + err);
+      e.target.disabled = false;
+    }
+  };
+  document.getElementById('stop').onclick = (e) => {
+    stop();
+    e.target.disabled = true;
+    document.getElementById('start').disabled = false;
+  };
+</script>
+</body>
+</html>
