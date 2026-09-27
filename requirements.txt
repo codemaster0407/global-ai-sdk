@@ -3,3 +3,6 @@ python-dotenv
 ffmpeg
 aiortc
 aiohttp
+zai-sdk
+pydantic
+langcache
