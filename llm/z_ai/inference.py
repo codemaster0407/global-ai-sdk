@@ -1,5 +1,8 @@
 from llm.z_ai.client import zai_client
-from pydantic import BaseModel
+from llm.z_ai.tools import TOOLS
+from pydantic import BaseModel, create_model
+from typing import Any
+import inspect
 import json
 
 
@@ -117,3 +120,83 @@ def streaming_response(system_prompt, user_prompt ):
         print("\n📋 Function Calls Triggered:")
         for idx, tool_call in final_tool_calls.items():
             print(f"  {idx}: Function Name: {tool_call.function.name}, Parameters: {tool_call.function.arguments}")
+
+
+
+def _build_tool(func):
+    '''
+        Builds the Z.ai tool schema and an argument validator from a function's signature and docstring.
+    '''
+    fields = {
+        name: (Any if param.annotation is inspect.Parameter.empty else param.annotation,
+               ... if param.default is inspect.Parameter.empty else param.default)
+        for name, param in inspect.signature(func).parameters.items()
+    }
+    print(fields)
+    args_model = create_model(f'{func.__name__}_args', **fields)
+    schema = {
+        "type": "function",
+        "function": {
+            "name": func.__name__,
+            "description": inspect.getdoc(func) or '',
+            "parameters": args_model.model_json_schema(),
+        },
+    }
+    return schema, args_model
+
+
+_TOOL_REGISTRY = {func.__name__: (func, *_build_tool(func)) for func in TOOLS}
+
+
+def _run_tool(tool_call):
+    '''
+        Executes one tool call. Errors are returned to the LLM as the tool result so it can recover.
+    '''
+    name = tool_call.function.name
+    if name not in _TOOL_REGISTRY:
+        return json.dumps({"error": f"Unknown tool: {name}"})
+
+    func, _, args_model = _TOOL_REGISTRY[name]
+    try:
+        args = args_model.model_validate_json(tool_call.function.arguments or '{}')
+        return json.dumps(func(**dict(args)), default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def inference_with_tools(system_prompt, user_prompt, model = 'glm-5.3', max_steps = 5):
+    '''
+        Generate the LLM response, running any tools from tools.py the LLM calls until it gives a final answer.
+    '''
+    messages = [{"role": "system", "content": system_prompt},
+                {"role" : "user" , "content" : user_prompt}]
+    tools = [schema for _, schema, _ in _TOOL_REGISTRY.values()]
+
+    for _ in range(max_steps):
+        response = zai_client.chat.completions.create(
+            model=model,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+        )
+        message = response.choices[0].message
+
+        if not message.tool_calls:
+            return message
+
+        messages.append({
+            "role": "assistant",
+            "content": message.content or "",
+            "tool_calls": [
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in message.tool_calls
+            ],
+        })
+
+        for tool_call in message.tool_calls:
+            result = _run_tool(tool_call)
+            print(f"[TOOL LOG] {tool_call.function.name}({tool_call.function.arguments}) -> {result}")
+            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+
+    raise RuntimeError(f"No final answer after {max_steps} tool-calling steps")
