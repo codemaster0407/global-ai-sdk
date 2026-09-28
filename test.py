@@ -19,5 +19,5 @@ from llm.redis_caching import functions as red
 
 # asyncio.run(red.push_data(prompt = 'Who is the founder of Boat?', response = 'The founder of Boat is Aman Gupta', attributes = None))
 
-print(red.search_query(input_prompt = 'Who is the founder of Boat',threshold = 0.7))
+print(asyncio.run(red.search_query(input_prompt = 'Who is the founder of Boat', threshold = 0.7)))
 

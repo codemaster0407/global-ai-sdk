@@ -19,7 +19,7 @@ async def push_data(prompt : str, response: str, attributes : dict):
 
 
 async def flush_entries():
-    langcache_client.flush()
+    await langcache_client.flush_async()
 
 
 async def delete_query_by_id(id: str):
@@ -27,13 +27,13 @@ async def delete_query_by_id(id: str):
     print(f"[REDIS LOG] DELETED ENTRY BY ID : {id}")
 
 
-def search_query(input_prompt : str, threshold : float = None):
+async def search_query(input_prompt : str, threshold : float = None):
     if threshold is not None:
-        res = langcache_client.search(prompt = input_prompt,
+        res = await langcache_client.search_async(prompt = input_prompt,
                                       similarity_threshold = threshold
                                       )
     else:
-        res = langcache_client.search(prompt=input_prompt)
+        res = await langcache_client.search_async(prompt=input_prompt)
 
 
     return res
