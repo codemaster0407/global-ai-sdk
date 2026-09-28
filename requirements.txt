@@ -6,3 +6,4 @@ aiohttp
 zai-sdk
 pydantic
 langcache
+google-genai

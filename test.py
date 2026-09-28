@@ -30,10 +30,14 @@
 ## LLM Tool Calling Test 
 
 
-from llm.z_ai.inference import inference_with_tools
+# from llm.z_ai.inference import inference_with_tools
 
 
-inference_with_tools(
-    system_prompt = 'You have access to tools and call the appropriate tool as per the user prompt', 
-    user_prompt = 'Add the numbers 3,4,5 and give me the output'
-)
+# inference_with_tools(
+#     system_prompt = 'You have access to tools and call the appropriate tool as per the user prompt', 
+#     user_prompt = 'Add the numbers 3,4,5 and give me the output'
+# )
+
+from llm.google.ai_studio import generate 
+
+generate(user_prompt = 'WHat is the capital of france?', system_prompt = 'You are a helpful agent.')
