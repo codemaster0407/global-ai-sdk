@@ -8,3 +8,7 @@ pydantic
 langcache
 google-genai
 tinyjev
+pytesseract
+unstructured-transform-client
+unstructured
+unstructured[all-docs]

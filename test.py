@@ -38,6 +38,20 @@
 #     user_prompt = 'Add the numbers 3,4,5 and give me the output'
 # )
 
-from llm.google.ai_studio import generate 
+# from llm.google.ai_studio import generate 
 
-generate(user_prompt = 'WHat is the capital of france?', system_prompt = 'You are a helpful agent.')
+# generate(user_prompt = 'WHat is the capital of france?', system_prompt = 'You are a helpful agent.')
+
+
+# from computer_vision.ocr.tesseract_inference import ocr_inference
+
+
+# print(ocr_inference(f'data/images/bowers.jpg'))
+
+
+from computer_vision.document_parsing.unstructured_helper import cloud_pdf_reader, local_pdf_reader
+
+
+print(local_pdf_reader('data/pdfs/sample-tables.pdf'))
+
+# cloud_pdf_reader('data/pdfs/sample-tables.pdf')
