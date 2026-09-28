@@ -14,3 +14,11 @@ unstructured
 unstructured[all-docs]
 fastapi 
 uvicorn
+scikit-learn
+xgboost
+lightgbm
+pandas
+numpy
+pyarrow
+joblib
+feast
