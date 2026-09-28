@@ -49,9 +49,21 @@
 # print(ocr_inference(f'data/images/bowers.jpg'))
 
 
-from computer_vision.document_parsing.unstructured_helper import cloud_pdf_reader, local_pdf_reader
+# from computer_vision.document_parsing.unstructured_helper import cloud_pdf_reader, local_pdf_reader
 
 
-print(local_pdf_reader('data/pdfs/sample-tables.pdf'))
+# print(local_pdf_reader('data/pdfs/sample-tables.pdf'))
 
 # cloud_pdf_reader('data/pdfs/sample-tables.pdf')
+
+
+# from computer_vision.video.utils.CameraDetector import CameraDetector, fetch_device_id
+
+# fetch_device_id()
+
+
+
+
+from computer_vision.streaming_backend import start_streaming_backend
+
+start_streaming_backend()
