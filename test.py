@@ -68,10 +68,17 @@
 
 # start_streaming_backend()
 
-from llm.prompt_maintenance import langfuse_client
+# from llm.prompt_maintenance import langfuse_client
 
-status = langfuse_client.create_prompt(prompt_type = 'chat',user_prompt = 'What do you think about the Dune movie?', 
-                              system_prompt = 'You are a movie critic. Explain the user the components of movie liked and disliked'
-                              , name = 'test-prompt')
+# status = langfuse_client.create_prompt(prompt_type = 'chat',user_prompt = 'What do you think about the Dune movie?', 
+#                               system_prompt = 'You are a movie critic. Explain the user the components of movie liked and disliked'
+#                               , name = 'test-prompt')
 
-print(status)
+# print(status)
+
+
+from rag.eval.rag_eval import evaluate_generated_output
+
+
+evaluate_generated_output(generated_output = 'Capital of France, Paris has the Eiffel Tower', 
+                          original_content = 'Eiffel Tower is present in the capital of France')
