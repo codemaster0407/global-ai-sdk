@@ -34,26 +34,43 @@ def build_model(name: str, task: str = "classification", **params):
     """
     is_clf = task == "classification"
 
+    # Defaults are overridden by ``params`` (e.g. tuned hyperparameters)
     if name == "logistic_regression" and is_clf:
         from sklearn.linear_model import LogisticRegression
-        return LogisticRegression(max_iter=1000, **params)
+        return LogisticRegression(**{"max_iter": 1000, **params})
     if name == "linear_regression" and not is_clf:
         from sklearn.linear_model import Ridge
         return Ridge(**params)
     if name == "random_forest":
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
         cls = RandomForestClassifier if is_clf else RandomForestRegressor
-        return cls(n_estimators=300, n_jobs=-1, **params)
+        return cls(**{"n_estimators": 300, "n_jobs": -1, **params})
     if name == "xgboost":
         import xgboost as xgb
         cls = xgb.XGBClassifier if is_clf else xgb.XGBRegressor
-        return cls(n_estimators=500, learning_rate=0.05, max_depth=6, **params)
+        return cls(**{"n_estimators": 500, "learning_rate": 0.05, "max_depth": 6, **params})
     if name == "lightgbm":
         import lightgbm as lgb
         cls = lgb.LGBMClassifier if is_clf else lgb.LGBMRegressor
-        return cls(n_estimators=500, learning_rate=0.05, verbose=-1, **params)
+        return cls(**{"n_estimators": 500, "learning_rate": 0.05, "verbose": -1, **params})
 
     raise ValueError(f"Unsupported model '{name}' for task '{task}'")
+
+
+def build_pipeline(
+    model_name: str,
+    task: str,
+    numeric_cols: List[str],
+    categorical_cols: List[str],
+    params: Optional[Dict[str, Any]] = None,
+) -> Pipeline:
+    """Preprocessing + estimator pipeline; scaling is skipped for tree models."""
+    return Pipeline([
+        ("preprocess", build_preprocessor(
+            numeric_cols, categorical_cols, scale=model_name not in TREE_MODELS
+        )),
+        ("model", build_model(model_name, task, **(params or {}))),
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +98,38 @@ def evaluate(model: Pipeline, X: pd.DataFrame, y: pd.Series, task: str) -> Dict[
             "r2": r2_score(y, preds),
         }
     return {k: round(float(v), 4) for k, v in metrics.items()}
+
+
+# ---------------------------------------------------------------------------
+# Data preparation
+# ---------------------------------------------------------------------------
+def prepare_data(
+    df: pd.DataFrame,
+    target: str,
+    task: str = "classification",
+    numeric_cols: Optional[List[str]] = None,
+    categorical_cols: Optional[List[str]] = None,
+    exclude: Optional[List[str]] = None,
+):
+    """Resolve feature columns and encode the target.
+
+    Returns ``(X, y, numeric_cols, categorical_cols, classes)``; ``classes`` is
+    the original label list when string labels were encoded to ints, else None.
+    """
+    if numeric_cols is None and categorical_cols is None:
+        numeric_cols, categorical_cols = infer_column_types(df, target, exclude)
+    numeric_cols = numeric_cols or []
+    categorical_cols = categorical_cols or []
+
+    X, y = df[numeric_cols + categorical_cols], df[target]
+
+    # XGBoost needs integer class labels, so encode string targets up front
+    classes = None
+    if task == "classification" and not pd.api.types.is_numeric_dtype(y):
+        classes = sorted(y.unique().tolist())
+        y = y.map({c: i for i, c in enumerate(classes)})
+
+    return X, y, numeric_cols, categorical_cols, classes
 
 
 # ---------------------------------------------------------------------------
@@ -124,31 +173,16 @@ def train_model(
     output_path: str | None
         When set, the fitted pipeline and its metadata are saved with joblib.
     """
-    if numeric_cols is None and categorical_cols is None:
-        numeric_cols, categorical_cols = infer_column_types(df, target, exclude)
-    numeric_cols = numeric_cols or []
-    categorical_cols = categorical_cols or []
-    feature_cols = numeric_cols + categorical_cols
-
-    X, y = df[feature_cols], df[target]
-
-    # XGBoost needs integer class labels, so encode string targets up front
-    classes = None
-    if task == "classification" and not pd.api.types.is_numeric_dtype(y):
-        classes = sorted(y.unique().tolist())
-        y = y.map({c: i for i, c in enumerate(classes)})
+    X, y, numeric_cols, categorical_cols, classes = prepare_data(
+        df, target, task, numeric_cols, categorical_cols, exclude
+    )
 
     stratify = y if task == "classification" else None
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=stratify
     )
 
-    pipeline = Pipeline([
-        ("preprocess", build_preprocessor(
-            numeric_cols, categorical_cols, scale=model_name not in TREE_MODELS
-        )),
-        ("model", build_model(model_name, task, **(params or {}))),
-    ])
+    pipeline = build_pipeline(model_name, task, numeric_cols, categorical_cols, params)
     pipeline.fit(X_train, y_train)
 
     metrics = evaluate(pipeline, X_test, y_test, task)

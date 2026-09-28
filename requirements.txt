@@ -23,4 +23,11 @@ pyarrow
 joblib
 feast
 langfuse
-deepeval
+deepevaloptuna
+ray[tune]
+mlflow
+wandb
+shap
+imbalanced-learn
+torch
+matplotlib

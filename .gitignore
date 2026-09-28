@@ -37,3 +37,4 @@ data/**
 # ML artifacts & local feature store data
 ml/artifacts/
 ml/features/feature_repo/data/
+wandb/
