@@ -7,3 +7,4 @@ zai-sdk
 pydantic
 langcache
 google-genai
+tinyjev
