@@ -4,6 +4,9 @@ from elevenlabs.play import play
 from llm.z_ai.inference import streaming_response
 from llm.z_ai.get_models import list_models
 import asyncio
+from llm.z_ai import websocket_streaming_response as wss
+
+wss.main()
 # print(list_models())
 
 # streaming_response(system_prompt = 'You are a financial agent who suggests what to purchase', user_prompt = 'I have 10 lakhs INR, where should I invest?')
@@ -19,5 +22,5 @@ from llm.redis_caching import functions as red
 
 # asyncio.run(red.push_data(prompt = 'Who is the founder of Boat?', response = 'The founder of Boat is Aman Gupta', attributes = None))
 
-print(asyncio.run(red.search_query(input_prompt = 'Who is the founder of Boat', threshold = 0.7)))
+# print(asyncio.run(red.search_query(input_prompt = 'Who is the founder of Boat', threshold = 0.7)))
 
