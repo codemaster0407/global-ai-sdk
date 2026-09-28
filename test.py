@@ -64,6 +64,14 @@
 
 
 
-from computer_vision.streaming_backend import start_streaming_backend
+# from computer_vision.streaming_backend import start_streaming_backend
 
-start_streaming_backend()
+# start_streaming_backend()
+
+from llm.prompt_maintenance import langfuse_client
+
+status = langfuse_client.create_prompt(prompt_type = 'chat',user_prompt = 'What do you think about the Dune movie?', 
+                              system_prompt = 'You are a movie critic. Explain the user the components of movie liked and disliked'
+                              , name = 'test-prompt')
+
+print(status)
