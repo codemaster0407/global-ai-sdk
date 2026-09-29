@@ -31,3 +31,4 @@ shap
 imbalanced-learn
 torch
 matplotlib
+nemoguardrails
