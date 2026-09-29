@@ -1,0 +1,11 @@
+{
+  "id": "01a0ecbe-e0a1-7cd3-a258-0f840e481d8a",
+  "name": "Demo project - Bikes",
+  "description": "A toy demo project using Bike Demand forecasting dataset",
+  "team_id": null,
+  "org_id": null,
+  "date_from": null,
+  "date_to": null,
+  "created_at": null,
+  "version": "2"
+}

@@ -1,0 +1,86 @@
+{
+  "id": "01a0ecbf-6431-7983-afc2-8968f678a868",
+  "project_id": "01a0ecbe-e0a1-7cd3-a258-0f840e481d8a",
+  "author_id": "00000000-0000-7000-8000-000000000000",
+  "name": "run-current-01a0ecbf-62b4-708d-aed1-1c9e94e5af7f",
+  "description": "",
+  "data_definition": {
+    "id_column": null,
+    "timestamp": null,
+    "service_columns": null,
+    "numerical_columns": [
+      "temp",
+      "atemp",
+      "hum",
+      "windspeed",
+      "hr",
+      "weekday",
+      "cnt",
+      "prediction"
+    ],
+    "categorical_columns": [
+      "season",
+      "holiday",
+      "workingday"
+    ],
+    "text_columns": [],
+    "datetime_columns": [],
+    "unknown_columns": [],
+    "list_columns": [],
+    "classification": null,
+    "regression": [
+      {
+        "name": "default",
+        "target": "cnt",
+        "prediction": "prediction"
+      }
+    ],
+    "llm": null,
+    "numerical_descriptors": [],
+    "categorical_descriptors": [],
+    "test_descriptors": null,
+    "ranking": null,
+    "special_columns": [],
+    "embeddings": null
+  },
+  "source": {
+    "type": "evidently:data_source:FileDataSource",
+    "filter_by": null,
+    "sort_by": null,
+    "project_id": "01a0ecbe-e0a1-7cd3-a258-0f840e481d8a",
+    "filename": "01a0ecbe-e0a1-7cd3-a258-0f840e481d8a/datasets/01a0ecbf-6431-7983-afc2-8968f678a868/data.parquet",
+    "is_tmp": false
+  },
+  "size_bytes": 12256,
+  "row_count": 24,
+  "column_count": 17,
+  "all_columns": [
+    "instant",
+    "season",
+    "yr",
+    "mnth",
+    "hr",
+    "holiday",
+    "weekday",
+    "workingday",
+    "weathersit",
+    "temp",
+    "atemp",
+    "hum",
+    "windspeed",
+    "casual",
+    "registered",
+    "cnt",
+    "prediction"
+  ],
+  "is_draft": false,
+  "draft_params": null,
+  "origin": "file",
+  "metadata": {},
+  "tags": [],
+  "tracing_params": null,
+  "human_feedback_custom_shortcut_labels": null,
+  "created_at": "2026-09-29T16:09:21.139882",
+  "updated_at": "2026-09-29T16:09:21.139882",
+  "author_name": ""
+}

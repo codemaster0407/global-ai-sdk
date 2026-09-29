@@ -34,3 +34,4 @@ matplotlib
 guardrails-ai
 guardrails-ai-regex-match 
 guardrails-ai-profanity-free
+evidently 
