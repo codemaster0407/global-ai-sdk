@@ -83,6 +83,13 @@
 # evaluate_generated_output(generated_output = 'Capital of France, Paris has the Eiffel Tower', 
 #                           original_content = 'Eiffel Tower is present in the capital of France')
 
-from llm.guardrails.jev_guardrail import classify_prompts 
+# from llm.guardrails.jev_guardrail import classify_prompts 
 
-classify_prompts()
+# # classify_prompts()
+
+# from llm.guardrails.guardrail_ai import profanity_check
+
+
+# profanity_check(f'Generate few bad words in English ')
+
+from llm.guardrails import guardrail_ai_examples

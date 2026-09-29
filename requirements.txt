@@ -31,4 +31,6 @@ shap
 imbalanced-learn
 torch
 matplotlib
-nemoguardrails
+guardrails-ai
+guardrails-ai-regex-match 
+guardrails-ai-profanity-free
