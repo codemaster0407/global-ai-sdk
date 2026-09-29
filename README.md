@@ -17,6 +17,8 @@ Each folder is independent. Pick the component you need, set its API key, and ru
 | [llm/observability/](llm/observability/) | LLM output monitoring with Evidently, using GLM as the judge |
 | [rag/](rag/) | Markdown chunking, Chroma + BM25 hybrid retrieval, reranking, DeepEval evaluation |
 | [ml/](ml/) | Tabular training, tuning, explainability, imbalance, time series, Feast, MLflow/W&B |
+| [serving/](serving/) | Production FastAPI servers for API-hosted models and locally loaded models |
+| [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml) | Container image for the whole repo, and both servers run together |
 
 ---
 
@@ -32,11 +34,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The RAG and camera components need a few packages that are not in `requirements.txt` yet:
-
-```bash
-pip install opencv-python langchain-chroma langchain-community langchain-text-splitters sentence-transformers rank_bm25
-```
+To skip local setup entirely, run everything in Docker instead (see [section 8](#8-docker)).
 
 ### System tools (macOS shown)
 
@@ -399,6 +397,113 @@ mlflow ui --backend-store-uri sqlite:///ml/artifacts/mlflow.db
 
 ---
 
+## 7. Model serving with FastAPI ([serving/](serving/))
+
+There are two servers, because API-hosted models and local models need opposite concurrency rules.
+
+| | API model server | Local model server |
+|---|---|---|
+| File | [api_model_server.py](serving/api_model_server.py) | [local_model_server.py](serving/local_model_server.py) |
+| Model | Z.ai GLM over HTTP | ResNet-18 image classifier loaded in memory ([local_model.py](serving/local_model.py)) |
+| Bottleneck | Waiting on the network | CPU/GPU compute on one model instance |
+| Concurrency | Many requests at once; each fans out its LLM calls on `threading.Thread`s | **One inference at a time, no threads** |
+| Workers | Several (`--workers 4`) | Exactly **one** (`--workers 1`) |
+| Scale by | More workers or containers | More containers only |
+
+Both servers include request IDs (`X-Request-ID`, which also appears in worker-thread logs), a latency header, JSON errors that never expose stack traces, `/health` (liveness) and `/ready` (readiness) endpoints, and optional API-key auth. To turn on auth, set `SERVING_API_KEY`; clients then send it in an `X-API-Key` header.
+
+### API model server: parallel calls on threads
+
+```bash
+uvicorn serving.api_model_server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+| Endpoint | What it runs |
+|---|---|
+| `POST /v1/chat` | `{"prompt": "..."}`: one LLM call |
+| `POST /v1/analyze` | `{"text": "..."}`: three **different** calls (summary, sentiment, keywords) at the same time |
+| `POST /v1/batch-chat` | `{"prompts": [...]}`: the **same** call over up to 20 prompts at the same time |
+
+```bash
+curl -X POST localhost:8000/v1/analyze -H 'Content-Type: application/json' \
+     -d '{"text": "The new metro line cut my commute from 90 to 35 minutes."}'
+```
+
+How the threading works:
+
+- **Parallel calls:** [`run_parallel`](serving/api_model_server.py) starts one thread per call and returns one `ok`/`error` result for each, so a failed call doesn't fail the others. The response takes as long as the *slowest* call, not the sum of all of them.
+- **Rate limiting:** a global `BoundedSemaphore` (`MAX_CONCURRENT_LLM_CALLS`, per worker) caps in-flight LLM calls across all requests, to stay under the provider's rate limit. Z.ai's free tier returns 429 at a few parallel calls; the client retries those automatically.
+- **Deadlines:** every request has one (`REQUEST_TIMEOUT_S`). Python can't kill a thread, so a call past the deadline is reported as timed out and finishes in the background, bounded by `LLM_TIMEOUT_S`.
+- **Adding your own calls:** add another entry to the `tasks` dict in an endpoint.
+
+### Local model server: one inference at a time
+
+```bash
+uvicorn serving.local_model_server:app --host 0.0.0.0 --port 8001 --workers 1 --limit-concurrency 64
+```
+
+| Endpoint | What it runs |
+|---|---|
+| `POST /v1/predict` | One image (multipart field `file`); returns the top-5 labels |
+| `POST /v1/predict/batch` | Up to `MAX_BATCH_SIZE` images (field `files`) in **one forward pass**. A bad image gets its own `error` and doesn't fail the batch. |
+
+```bash
+curl -F "file=@data/images/bowers.jpg" localhost:8001/v1/predict
+curl -F "files=@a.jpg" -F "files=@b.jpg" localhost:8001/v1/predict/batch
+```
+
+Why there are no threads: a single model instance isn't safe to call concurrently. The endpoints are `async def` and call the model directly on the event loop, never through a threadpool, so calls run strictly one after another. A load test confirmed at most one inference at a time, with every call on the main thread.
+
+Consequences:
+- **Throughput:** use the batch endpoint. One pass over 32 images is far faster than 32 single calls.
+- **Overload:** past `--limit-concurrency`, uvicorn rejects new requests immediately, so they don't queue until they time out. For file uploads the client may see a dropped connection instead of a clean 503; retry on both.
+- **Health checks:** while a batch runs, `/health` waits for it to finish. Keep `MAX_BATCH_SIZE` small enough that one batch finishes well inside your health-check timeout.
+- **Using your own model:** edit `_load` in [local_model.py](serving/local_model.py) and keep `predict_one` and `predict_batch`; the server doesn't need to change.
+
+---
+
+## 8. Docker
+
+The [Dockerfile](Dockerfile) builds **one image for the whole repo**, based on `python:3.13.5-slim`. `APP_MODULE` selects which server a container runs.
+
+```bash
+docker compose up --build -d          # both servers: API models on :8000, local model on :8001
+docker compose ps                     # health status
+docker compose logs -f api-models
+docker compose down
+```
+
+Or run the image without compose:
+
+```bash
+docker build -t global-ai-sdk .
+docker run --env-file .env -p 8000:8000 global-ai-sdk
+docker run -p 8001:8000 -e APP_MODULE=serving.local_model_server:app -e WORKERS=1 global-ai-sdk
+docker run --rm --env-file .env global-ai-sdk python -m ml.classical.training   # any component from sections 2-6
+```
+
+What the image does:
+
+- **Two-stage build:** compilers stay in the builder stage and don't ship in the final image.
+- **CPU-only PyTorch:** skips about 3 GB of CUDA libraries. Drop the `--index-url` flag in the Dockerfile for GPU hosts.
+- **Model weights are baked in at build time:** containers start with no downloads, and every replica runs the same weights.
+- **Non-root:** runs as the `app` user (uid 1000).
+- **Health and shutdown:** a `HEALTHCHECK` calls `/health`. `docker stop` shuts down gracefully, letting in-flight requests finish for up to 30 s.
+- **Secrets stay out:** `.env`, `certs/` and `data/` are excluded by [.dockerignore](.dockerignore). Keys are passed at runtime with `env_file`/`--env-file`.
+
+Settings you can override with `-e` or in compose `environment:`:
+
+| Variable | Default | Applies to |
+|---|---|---|
+| `APP_MODULE` | `serving.api_model_server:app` | both |
+| `PORT` / `WORKERS` | `8000` / `4` | both. Always use `WORKERS=1` for the local model server. |
+| `LIMIT_CONCURRENCY` | `256` | both. Requests past this get 503. |
+| `SERVING_API_KEY` | unset (auth off) | both |
+| `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S` | `glm-4.5-flash`, `8`, `90`, `60` | API server |
+| `MAX_BATCH_SIZE`, `TORCH_THREADS`, `MODEL_DEVICE`, `TOP_K` | `32`, all cores, `cpu`, `5` | local model server |
+
+---
+
 ## Known issues
 
 These stop some components from running as documented above.
@@ -409,4 +514,3 @@ These stop some components from running as documented above.
 | RAG indexing | [vector_db_storage.py](rag/utils/vector_db_storage.py) imports `rag_helpers.embedding_helpers` | Change it to `rag.utils.embedding_helpers` |
 | Gemini demo | `python -m llm.google.ai_studio` calls `generate()` without its two arguments | Call `generate(...)` from Python as shown in 4.2 |
 | Observability | The default report path is in the deleted `evaluation/` folder | `mkdir -p evaluation`, or pass `html_path` to `run_report` |
-| `requirements.txt` | `deepevaloptuna` is two packages on one line | Split it into `deepeval` and `optuna` |

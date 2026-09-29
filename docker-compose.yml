@@ -1,0 +1,48 @@
+# Runs both model servers from the same image.
+#
+#   docker compose up --build -d        # build and start in the background
+#   docker compose ps                   # health status of each service
+#   docker compose logs -f local-model  # follow one service's logs
+#   docker compose down                 # stop and remove the containers
+
+x-common: &common
+  build: .
+  image: global-ai-sdk:latest
+  env_file: .env                 # API keys, read at runtime, never copied into the image
+  restart: unless-stopped
+  stop_grace_period: 40s         # > TIMEOUT_GRACEFUL_SHUTDOWN so in-flight requests can finish
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  # API-hosted models (Z.ai GLM): I/O bound, so several workers, each fanning out with threads
+  api-models:
+    <<: *common
+    ports: ["8000:8000"]
+    environment:
+      APP_MODULE: serving.api_model_server:app
+      WORKERS: "4"
+      MAX_CONCURRENT_LLM_CALLS: "4"   # per worker; total = 4 x WORKERS. Match your provider's rate limit
+      LLM_MODEL: glm-4.5-flash
+      REQUEST_TIMEOUT_S: "90"
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2g }
+
+  # Locally loaded model: ONE worker = one model instance = one inference at a time.
+  # Scale out with more containers, never with more workers.
+  local-model:
+    <<: *common
+    ports: ["8001:8000"]
+    environment:
+      APP_MODULE: serving.local_model_server:app
+      WORKERS: "1"
+      LIMIT_CONCURRENCY: "64"         # past this, new requests get 503 instead of queueing
+      MAX_BATCH_SIZE: "32"
+      TORCH_THREADS: "2"              # CPU threads inside one forward pass (match the cpus limit)
+    volumes:
+      - ./data:/app/data              # inputs/outputs the other components read and write
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2g }

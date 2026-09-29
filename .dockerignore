@@ -1,0 +1,39 @@
+# Secrets - pass these at runtime (--env-file / compose env_file), never bake them into an image
+.env
+.env.*
+certs/
+*.pem
+*.key
+
+# VCS, editors, OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.deepeval/
+
+# Local data and generated artifacts - mount them as volumes instead
+data/
+ml/artifacts/
+ml/features/feature_repo/data/
+runtime_vector_db/
+evaluation/
+mlruns/
+wandb/
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
