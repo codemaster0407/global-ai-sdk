@@ -93,11 +93,17 @@ Full usage examples for every component: [README.md](README.md). Read the matchi
 | Production middleware: request id, latency header, safe JSON errors, API-key auth, env config | [serving/common.py](serving/common.py) | `add_production_middleware`, `require_api_key`, `env_int` |
 | Container image (multi-stage, CPU torch, non-root, healthcheck, baked weights) | [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [.dockerignore](.dockerignore) | `APP_MODULE` selects the server |
 
+### Databases
+| Task | File | Entry point |
+|---|---|---|
+| Pooled SQLAlchemy engine for GCP Cloud SQL for **SQL Server** (`pytds`) via the Cloud SQL Python Connector | [database/gcp/cloud_sql_connector.py](database/gcp/cloud_sql_connector.py) | `connect_with_connector()`; auth via Application Default Credentials |
+| DB helpers: inspect, create/rename/truncate/drop tables, add/rename/alter/drop columns, foreign keys, unique/primary keys, indexes (Alembic ops, SQL Server-safe), and batched insert / select / update / delete with dict `where` filters | [database/gcp/db_functions.py](database/gcp/db_functions.py) | `create_table`, `add_column`, `drop_column`, `alter_column`, `add_foreign_key`, `create_index`, `insert_rows`, `select_rows`, `update_rows`, `delete_rows`, `run_sql`; optional `engine=` |
+
 **Choosing a serving pattern:** if the model is behind an HTTP API, use `api_model_server.py` (threads, many workers). If the model weights are in process memory, use `local_model_server.py` (no threads, one worker, scale by containers).
 
 ## Environment variables
 
-`Z_AI_API_KEY`, `GOOGLE_AI_STUDIO_KEY`, `ELEVENLABS_API_KEY`, `UNSTRUCTURED_API_KEY`, `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`, `REDIS_DB_URI` / `REDIS_CACHE_ID` / `REDIS_KEY`, and the serving settings (`SERVING_API_KEY`, `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S`, `MAX_BATCH_SIZE`, ...). See README sections 1 and 8.
+`Z_AI_API_KEY`, `GOOGLE_AI_STUDIO_KEY`, `ELEVENLABS_API_KEY`, `UNSTRUCTURED_API_KEY`, `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`, `REDIS_DB_URI` / `REDIS_CACHE_ID` / `REDIS_KEY`, `GCP_CONNECTION_NAME` / `GCP_CLOUD_DB_USER` / `GCP_CLOUD_DB_PWD` / `GCP_DB_NAME` / `PRIVATE_IP` / `DB_ROOT_CERT`, and the serving settings (`SERVING_API_KEY`, `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S`, `MAX_BATCH_SIZE`, ...). See README sections 1, 8 and 9.
 
 ## Known issues
 

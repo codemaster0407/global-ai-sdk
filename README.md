@@ -18,6 +18,7 @@ Each folder is independent. Pick the component you need, set its API key, and ru
 | [rag/](rag/) | Markdown chunking, Chroma + BM25 hybrid retrieval, reranking, DeepEval evaluation |
 | [ml/](ml/) | Tabular training, tuning, explainability, imbalance, time series, Feast, MLflow/W&B |
 | [serving/](serving/) | Production FastAPI servers for API-hosted models and locally loaded models |
+| [database/](database/) | GCP Cloud SQL for SQL Server connection pool, plus helpers for tables, columns, keys, indexes and rows |
 | [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml) | Container image for the whole repo, and both servers run together |
 
 ---
@@ -59,6 +60,12 @@ LANGFUSE_BASE_URL=       # e.g. https://cloud.langfuse.com (older SDKs read LANG
 REDIS_DB_URI=            # llm/redis_caching (LangCache server URL)
 REDIS_CACHE_ID=
 REDIS_KEY=
+GCP_CONNECTION_NAME=     # database/gcp: 'project:region:instance'
+GCP_CLOUD_DB_USER=
+GCP_CLOUD_DB_PWD=
+GCP_DB_NAME=
+PRIVATE_IP=              # optional: set to connect over the instance's private IP
+DB_ROOT_CERT=            # optional: path to the instance's server CA .pem, if SSL is enforced
 ```
 
 ### How to run things
@@ -501,6 +508,80 @@ Settings you can override with `-e` or in compose `environment:`:
 | `SERVING_API_KEY` | unset (auth off) | both |
 | `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S` | `glm-4.5-flash`, `8`, `90`, `60` | API server |
 | `MAX_BATCH_SIZE`, `TORCH_THREADS`, `MODEL_DEVICE`, `TOP_K` | `32`, all cores, `cpu`, `5` | local model server |
+
+---
+
+## 9. Database: GCP Cloud SQL ([database/gcp/](database/gcp/))
+
+Connects to a Cloud SQL for **SQL Server** instance (2017–2025, any edition including Express) through the [Cloud SQL Python Connector](https://github.com/GoogleCloudPlatform/cloud-sql-python-connector) and the `pytds` driver. The connector handles TLS and IAM authorization, so you don't need to allowlist IPs or run the Auth Proxy.
+
+Needs the `GCP_*` database keys, plus Google credentials:
+
+```bash
+gcloud auth application-default login     # locally; on GCP the service account is used
+```
+
+The account needs the **Cloud SQL Client** role, and the **Cloud SQL Admin API** must be enabled on the project. `GCP_DB_NAME` must be a database you created on the instance, for example with `gcloud sql databases create appdb --instance <instance>`. The instance name is not a database. `GCP_CLOUD_DB_USER` is `sqlserver` (the built-in admin) or a user you created with `gcloud sql users create`.
+
+```python
+from database.gcp.cloud_sql_connector import connect_with_connector
+
+engine = connect_with_connector()          # a pooled SQLAlchemy engine; no connection is opened yet
+```
+
+### Working with tables and rows ([db_functions.py](database/gcp/db_functions.py))
+
+Every function takes an optional `engine=`. When you leave it out, one shared engine is created on first use and reused.
+
+```python
+from sqlalchemy import Column, Integer, String, Numeric
+from database.gcp import db_functions as db
+
+# Inspect
+db.list_tables()                                   # ['Addresses', 'Orders', ...]
+db.describe_table("Orders")                        # columns, primary key, foreign keys, unique constraints, indexes
+
+# Tables
+db.create_table("demo_users", Column("id", Integer, primary_key=True), Column("name", String(100), nullable=False))
+db.rename_table("demo_users", "demo_customers")
+db.truncate_table("demo_customers")                # fails if another table's foreign key references it
+db.drop_table("demo_customers")
+
+# Columns
+db.add_column("demo_users", Column("city", String(50), nullable=False, server_default="Pune"))
+db.rename_column("demo_users", "city", "town")
+db.alter_column("demo_users", "name", type_=String(200))    # keeps NOT NULL; also nullable= and server_default=
+db.drop_column("demo_users", "town")               # drops its default/check/FK constraints first
+
+# Keys, constraints and indexes
+db.add_foreign_key("fk_orders_user", "demo_orders", "demo_users", ["user_id"], ["id"], ondelete="CASCADE")
+db.drop_foreign_key("fk_orders_user", "demo_orders")
+db.add_unique_constraint("uq_users_name", "demo_users", ["name"])
+db.drop_constraint("uq_users_name", "demo_users")
+db.create_index("ix_orders_user", "demo_orders", ["user_id"])
+db.drop_index("ix_orders_user", "demo_orders")
+
+# Rows
+db.insert_rows("demo_users", [{"name": "Asha"}, {"name": "Ravi"}])          # batched multi-row INSERTs
+db.select_rows("demo_users", where={"id": [1, 2]}, order_by="-id", limit=10)
+db.count_rows("demo_users", where={"name": "Asha"})
+db.update_rows("demo_users", {"name": "Asha K"}, where={"id": 1})
+db.delete_rows("demo_users", where={"id": 2})
+db.run_sql("SELECT * FROM demo_users WHERE name = :name", {"name": "Asha"})
+```
+
+- **`where`:** `{"col": value}` means equals, a list means `IN (...)`, and `None` means `IS NULL`. Several keys are combined with `AND`.
+- **Safety:** `update_rows` and `delete_rows` refuse an empty `where`, because it would change every row. Pass `allow_all=True` to confirm. Values are always sent as bound parameters. With `run_sql`, pass values as `:name` parameters and never format them into the SQL string.
+- **Bulk inserts:** `insert_rows` runs in one transaction and splits rows into statements within SQL Server's limits (2,100 parameters and 1,000 rows each). Explicit values for an identity column work; SQLAlchemy turns on `IDENTITY_INSERT` automatically.
+- **Schema changes** use [Alembic](https://alembic.sqlalchemy.org/)'s operations API, which writes the right SQL Server DDL: `sp_rename` for renames, and dropping a column's default constraint before the column. Each change runs in its own transaction.
+- **Case:** SQL Server table names are case-insensitive by default, so `orders` and `Orders` are the same table. Check `list_tables()` before creating or dropping anything.
+
+### Notes and troubleshooting
+
+- Create the engine **once per process** and reuse it (`db_functions` does this for you). Each `connect_with_connector()` call creates a new connector and pool.
+- `PRIVATE_IP` only works from inside the instance's VPC, for example from Cloud Run or GKE with a VPC connector.
+- `404 The Cloud SQL instance does not exist` means `GCP_CONNECTION_NAME` doesn't match a real instance. Check it with `gcloud sql instances list --format="value(connectionName)"`.
+- `Login failed for user '...'` means the user or password is wrong, or `GCP_DB_NAME` doesn't exist on the instance. List both with `gcloud sql users list --instance <instance>` and `gcloud sql databases list --instance <instance>`.
 
 ---
 

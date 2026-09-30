@@ -93,3 +93,12 @@
 # profanity_check(f'Generate few bad words in English ')
 
 # from llm.observability.
+
+
+from database.gcp.cloud_sql_connector import connect_with_connector
+# from database.gcp.dummy_data import push_dummy_data
+from database.gcp.db_functions import list_tables
+
+connect_with_connector()
+list_tables()
+# push_dummy_data()
