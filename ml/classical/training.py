@@ -1,4 +1,4 @@
-"""Train scikit-learn / XGBoost / LightGBM models behind one interface."""
+"""Train scikit-learn / XGBoost / LightGBM / TabPFN models behind one interface."""
 import json
 import os
 from dataclasses import dataclass, field
@@ -18,9 +18,39 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-from ml.features.pipelines import build_preprocessor, infer_column_types
+from ml.features.pipelines import (
+    build_passthrough_preprocessor,
+    build_preprocessor,
+    infer_column_types,
+)
 
 TREE_MODELS = {"xgboost", "lightgbm", "random_forest"}
+# Models that impute, encode and scale internally, so they get the raw feature columns
+NATIVE_PREPROCESSING_MODELS = {"tabpfn"}
+
+
+def _build_tabpfn(is_clf: bool, params: Dict[str, Any]):
+    """TabPFN: a pretrained transformer for small/medium tables (no gradient training).
+
+    ``fit`` stores the training rows as context and ``predict`` runs one forward
+    pass over them, so there is little to tune and no feature engineering to do.
+    Pass ``model_version`` ("v2", "v2.5", "v2.6", "v3", "v3.5", "v3.5-fast") to pin
+    the weights; otherwise TabPFN's default is used (``TABPFN_MODEL_VERSION`` in
+    ``.env``, else v3.5). v2.5 and newer need a one-time license acceptance and a
+    ``TABPFN_TOKEN`` - see README section 6. The device defaults to CUDA, then MPS
+    (Apple GPU), then CPU.
+    """
+    from tabpfn import TabPFNClassifier, TabPFNRegressor
+    from tabpfn.constants import ModelVersion
+
+    params = dict(params)
+    if not is_clf:
+        params.pop("balance_probabilities", None)  # classifier-only option
+    cls = TabPFNClassifier if is_clf else TabPFNRegressor
+    version = params.pop("model_version", None)
+    if version:
+        return cls.create_default_for_version(ModelVersion(version), **params)
+    return cls(**params)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +83,8 @@ def build_model(name: str, task: str = "classification", **params):
         import lightgbm as lgb
         cls = lgb.LGBMClassifier if is_clf else lgb.LGBMRegressor
         return cls(**{"n_estimators": 500, "learning_rate": 0.05, "verbose": -1, **params})
+    if name == "tabpfn":
+        return _build_tabpfn(is_clf, params)
 
     raise ValueError(f"Unsupported model '{name}' for task '{task}'")
 
@@ -64,12 +96,26 @@ def build_pipeline(
     categorical_cols: List[str],
     params: Optional[Dict[str, Any]] = None,
 ) -> Pipeline:
-    """Preprocessing + estimator pipeline; scaling is skipped for tree models."""
-    return Pipeline([
-        ("preprocess", build_preprocessor(
+    """Preprocessing + estimator pipeline; scaling is skipped for tree models.
+
+    TabPFN gets the raw columns (numeric, then categorical) and is told which
+    positions are categorical; it handles missing values and encoding itself.
+    """
+    params = dict(params or {})
+    if model_name in NATIVE_PREPROCESSING_MODELS:
+        preprocess = build_passthrough_preprocessor(numeric_cols, categorical_cols)
+        if categorical_cols:
+            start = len(numeric_cols)
+            params.setdefault(
+                "categorical_features_indices", list(range(start, start + len(categorical_cols)))
+            )
+    else:
+        preprocess = build_preprocessor(
             numeric_cols, categorical_cols, scale=model_name not in TREE_MODELS
-        )),
-        ("model", build_model(model_name, task, **(params or {}))),
+        )
+    return Pipeline([
+        ("preprocess", preprocess),
+        ("model", build_model(model_name, task, **params)),
     ])
 
 
@@ -163,7 +209,9 @@ def train_model(
         Training data including the ``target`` column.
     model_name: str
         One of ``logistic_regression``, ``linear_regression``,
-        ``random_forest``, ``xgboost``, ``lightgbm``.
+        ``random_forest``, ``xgboost``, ``lightgbm``, ``tabpfn``.
+        TabPFN suits tables up to tens of thousands of rows and often beats
+        tuned boosting there with no tuning; prefer a GPU (CUDA or Apple MPS).
     task: str
         ``classification`` or ``regression``.
     numeric_cols / categorical_cols: list | None

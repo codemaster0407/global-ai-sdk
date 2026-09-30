@@ -57,6 +57,9 @@ def class_weight_params(model_name: str, y: pd.Series) -> Dict[str, Any]:
         return {"scale_pos_weight": float(counts.max() / counts.min())}
     if model_name in {"lightgbm", "random_forest", "logistic_regression"}:
         return {"class_weight": "balanced"}
+    if model_name == "tabpfn":
+        # No training loss to reweight; TabPFN rebalances its predicted probabilities instead
+        return {"balance_probabilities": True}
     raise ValueError(f"Class weights not supported for '{model_name}'")
 
 

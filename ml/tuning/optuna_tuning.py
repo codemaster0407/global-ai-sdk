@@ -54,6 +54,14 @@ def suggest_params(trial: optuna.Trial, model_name: str) -> Dict[str, Any]:
         return {"C": trial.suggest_float("C", 1e-4, 100.0, log=True)}
     if model_name == "linear_regression":
         return {"alpha": trial.suggest_float("alpha", 1e-4, 100.0, log=True)}
+    if model_name == "tabpfn":
+        # Pretrained, so only inference-time knobs: ensemble size and probability sharpness.
+        # Gains are usually small; each trial re-runs TabPFN on every fold, so keep n_trials low.
+        return {
+            "n_estimators": trial.suggest_int("n_estimators", 1, 16),
+            "softmax_temperature": trial.suggest_float("softmax_temperature", 0.5, 1.0),
+            "average_before_softmax": trial.suggest_categorical("average_before_softmax", [False, True]),
+        }
 
     raise ValueError(f"No search space defined for '{model_name}'")
 

@@ -62,3 +62,23 @@ def build_preprocessor(
     return ColumnTransformer(
         transformers, remainder="drop", verbose_feature_names_out=False
     ).set_output(transform="pandas")
+
+
+def build_passthrough_preprocessor(
+    numeric_cols: List[str],
+    categorical_cols: List[str],
+) -> ColumnTransformer:
+    """Select the feature columns unchanged: numeric first, then categorical.
+
+    For models that impute, encode and scale internally (TabPFN). The fixed
+    column order lets the caller point the model at the categorical columns
+    by position: indices ``len(numeric_cols)`` onwards.
+    """
+    transformers = []
+    if numeric_cols:
+        transformers.append(("numeric", "passthrough", numeric_cols))
+    if categorical_cols:
+        transformers.append(("categorical", "passthrough", categorical_cols))
+    return ColumnTransformer(
+        transformers, remainder="drop", verbose_feature_names_out=False
+    ).set_output(transform="pandas")

@@ -52,6 +52,11 @@ SEARCH_SPACES: Dict[str, Dict[str, Any]] = {
     },
     "logistic_regression": {"C": tune.loguniform(1e-4, 100.0)},
     "linear_regression": {"alpha": tune.loguniform(1e-4, 100.0)},
+    # Parallel TabPFN trials share one GPU; use max_concurrent=1 unless you have several
+    "tabpfn": {
+        "n_estimators": tune.randint(1, 17),
+        "softmax_temperature": tune.uniform(0.5, 1.0),
+    },
 }
 
 
@@ -74,6 +79,9 @@ def _automl_space(trial, model_names: List[str]):
         trial.suggest_float("C", 1e-4, 100.0, log=True)
     elif name == "linear_regression":
         trial.suggest_float("alpha", 1e-4, 100.0, log=True)
+    elif name == "tabpfn":
+        trial.suggest_int("n_estimators", 1, 16)
+        trial.suggest_float("softmax_temperature", 0.5, 1.0)
 
 
 def _cv_trainable(config, X, y, folds, task, numeric_cols, categorical_cols, scoring):
