@@ -16,6 +16,7 @@ Each folder is independent. Pick the component you need, set its API key, and ru
 | [llm/guardrails/](llm/guardrails/) | Rule-based prompt guardrail (tinyjev) and guardrails-ai examples |
 | [llm/observability/](llm/observability/) | LLM output monitoring with Evidently, using GLM as the judge |
 | [rag/](rag/) | Markdown chunking, Chroma + BM25 hybrid retrieval, reranking, DeepEval evaluation |
+| [vector_db/](vector_db/) | Upserting chunks to Pinecone (integrated embedding) |
 | [ml/](ml/) | Tabular training, tuning, explainability, imbalance, time series, Feast, MLflow/W&B |
 | [serving/](serving/) | Production FastAPI servers for API-hosted models and locally loaded models |
 | [database/](database/) | GCP Cloud SQL for SQL Server connection pool, plus helpers for tables, columns, keys, indexes and rows |
@@ -66,6 +67,7 @@ GCP_CLOUD_DB_PWD=
 GCP_DB_NAME=
 PRIVATE_IP=              # optional: set to connect over the instance's private IP
 DB_ROOT_CERT=            # optional: path to the instance's server CA .pem, if SSL is enforced
+PINECONE_KEY=            # vector_db/pinecone_func
 ```
 
 ### How to run things
@@ -315,20 +317,33 @@ To monitor real traffic, replace `eval_df` with your logged prompts and response
 
 Uses Nomic embeddings (downloaded on first run, runs on CPU), a Chroma vector store saved to `runtime_vector_db/`, BM25 keyword search, and cross-encoder reranking.
 
-### Index markdown files
+### Chunk markdown files
 
 ```python
 from rag.helpers.chunk_embeddings import iterate_chunk_vectorize
 
-# metadata_json maps each file path to extra metadata stored on its chunks
-metadata = {"docs/card_a.md": {"bank_name": "HDFC", "card_name": "Regalia",
-                               "benefit_categories": ["travel"], "url": "https://..."}}
-iterate_chunk_vectorize("docs/", metadata)
+# metadata.json maps each file to extra metadata stored on its chunks, e.g.
+# {"any/dir/card_a.md": {"bank_name": "HDFC", "card_name": "Regalia", "benefit_categories": ["travel"], "url": "https://..."}}
+chunks = iterate_chunk_vectorize("data/rag_docs", metadata_json_path="data/rag_docs/metadata.json")
 ```
 
-Files are split by markdown headers, then into chunks of about 2,000 characters with 400 characters of overlap.
+Files are split by markdown headers, then into chunks of about 2,000 characters with 400 characters of overlap. Metadata is matched by **file name**, so the directory in the JSON keys doesn't have to match where the files are now; a file with no entry logs a warning and gets `"N/A"` values. The function returns the chunks as LangChain `Document`s; storing them in Chroma is currently commented out.
 
-> ⚠️ Indexing currently fails on import. See [Known issues](#known-issues).
+### Upsert chunks to Pinecone ([vector_db/pinecone_func/](vector_db/pinecone_func/))
+
+Needs `PINECONE_KEY`. The `ai-sdk-testing` index uses **integrated embedding**: Pinecone embeds the `page_content` field itself with `llama-text-embed-v2`, so no local embedding model is needed.
+
+```python
+from vector_db.pinecone_func.insert_data import insert_chunks_pinecone
+
+insert_chunks_pinecone(chunks, namespace="credit-cards")     # returns the number of records sent
+```
+
+- Each chunk becomes a record: `{"_id": "<source>#<chunk_index>", "page_content": <text>, **metadata}`. The ids are stable, so running it again overwrites the same records instead of duplicating them.
+- Records are sent in batches of 96, Pinecone's limit when it does the embedding. Rate limits (429) and server errors are retried with backoff.
+- Metadata is flattened to what Pinecone accepts (strings, numbers, booleans, lists of strings); `None` values are dropped.
+- Upserts are eventually consistent, so new records can take a few seconds to show up in search and in `describe_index_stats()`.
+- If you point it at another index, `TEXT_FIELD` in [insert_data.py](vector_db/pinecone_func/insert_data.py) must match that index's `field_map` text field.
 
 ### Retrieve
 

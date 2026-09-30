@@ -1,6 +1,6 @@
 from typing import List
 import os
-from rag.utils.vector_db_storage import vector_db_storage
+# from rag.utils.vector_db_storage import vector_db_storage
 from rag.utils.text_chunk import chunk_text_func
 # pyrefly: ignore [missing-import]
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
@@ -10,9 +10,20 @@ import json
 
 
 
-def iterate_chunk_vectorize(md_file_dir: str, metadata_json : dict, persist_directory : str = f'runtime_vector_db') -> List[Document]:
+def load_json_file(path : str) -> dict:
+    try:
+        with open(path, 'r') as fp:
+            data = json.load(fp)
+        return data
+
+    except Exception as e:
+        raise Exception(f'[JSON LOAD] JSON loading error at {os.getcwd()}/chunk_embeddings.py')
+
+    
+def iterate_chunk_vectorize(md_file_dir: str, metadata_json_path : str, persist_directory : str = f'runtime_vector_db') -> List[Document]:
     """Load markdown files, split them, and store embeddings in Chroma."""
     print(f"[LOG] Markdown file loading from {md_file_dir}")
+
     loader = DirectoryLoader(
         path=md_file_dir,
         glob="**/*.md",
@@ -20,11 +31,15 @@ def iterate_chunk_vectorize(md_file_dir: str, metadata_json : dict, persist_dire
         show_progress=True,
         use_multithreading=True,
     )
+
     docs = loader.load()
     print(f"[LOG] Number of documents loaded: {len(docs)}")
     print("--" * 30)
     chunked_docs: List[Document] = []
     print(f"[LOG] Chunking in progress for {len(docs)} documents")
+    metadata_json = load_json_file(metadata_json_path)
+    # Match on file name, not full path, so metadata still applies after the files are moved
+    metadata_by_file = {os.path.basename(path): meta for path, meta in metadata_json.items()}
     print("--" * 30)
     for doc in docs:
         if isinstance(doc, str):
@@ -33,7 +48,9 @@ def iterate_chunk_vectorize(md_file_dir: str, metadata_json : dict, persist_dire
         chunks = chunk_text_func(doc.page_content)
     
         source_path = doc.metadata.get("source", "")
-        file_content_metadata = metadata_json.get(source_path, {})
+        file_content_metadata = metadata_by_file.get(os.path.basename(source_path), {})
+        if not file_content_metadata:
+            print(f"[WARN] No metadata.json entry for {source_path}")
         for idx, chunk in enumerate(chunks):
             # `chunk` is now a Document
             chunk_content = chunk.page_content
@@ -63,6 +80,6 @@ def iterate_chunk_vectorize(md_file_dir: str, metadata_json : dict, persist_dire
     print("[LOG] Storing embeddings onto Vector DB Storage")
     print("--" * 30)
     # Use a smaller batch size to keep memory low
-    vector_db_storage(chunks = chunked_docs, persist_directory = persist_directory,  batch_size=256)
-    print("[LOG] Embeddings stored successfully")
+    # vector_db_storage(chunks = chunked_docs, persist_directory = persist_directory,  batch_size=256)
+    # print("[LOG] Embeddings stored successfully")
     return chunked_docs

@@ -62,7 +62,8 @@ Full usage examples for every component: [README.md](README.md). Read the matchi
 | Chunk markdown by headers, then by size | [rag/utils/text_chunk.py](rag/utils/text_chunk.py) | `chunk_text_func(text)` |
 | Embeddings (Nomic, LangChain-compatible) | [rag/utils/embedding_helpers.py](rag/utils/embedding_helpers.py) | `NomicEmbeddings` / `nomic_embeddings` |
 | Batched insert into Chroma | [rag/utils/vector_db_storage.py](rag/utils/vector_db_storage.py) | `vector_db_storage(chunks, batch_size, persist_directory)` |
-| End-to-end indexing of a folder of markdown with per-file metadata | [rag/helpers/chunk_embeddings.py](rag/helpers/chunk_embeddings.py) | `iterate_chunk_vectorize(md_file_dir, metadata_json)` |
+| Load a folder of markdown, chunk it, attach per-file metadata from a JSON file (matched by file name) | [rag/helpers/chunk_embeddings.py](rag/helpers/chunk_embeddings.py) | `iterate_chunk_vectorize(md_file_dir, metadata_json_path)` → `List[Document]` |
+| Upsert chunks to a Pinecone index with integrated embedding (stable ids, batches of 96, retry on 429/5xx, metadata flattening) | [vector_db/pinecone_func/insert_data.py](vector_db/pinecone_func/insert_data.py), [client.py](vector_db/pinecone_func/client.py) | `insert_chunks_pinecone(chunked_docs, namespace, index_name)`, `chunks_to_records(docs)`; `PINECONE_KEY` |
 | Hybrid retrieval (vector + BM25) + cross-encoder rerank + metadata filter | [rag/utils/retrieval.py](rag/utils/retrieval.py) | `hybrid_retrieve(query, top_k, rerank, metadata_filter)` |
 | Evaluate answers (faithfulness, relevancy) and retrieval (P@k, R@k, hit rate, MRR) | [rag/eval/rag_eval.py](rag/eval/rag_eval.py) | `evaluate_generated_output(...)`, `precision_at_k`, `recall_at_k`, `hit_rate_at_k`, `mrr` |
 | Use a non-OpenAI LLM as the DeepEval judge | [rag/eval/zai_llm.py](rag/eval/zai_llm.py) | `glm_model` (`DeepEvalBaseLLM` subclass) |
@@ -103,7 +104,7 @@ Full usage examples for every component: [README.md](README.md). Read the matchi
 
 ## Environment variables
 
-`Z_AI_API_KEY`, `GOOGLE_AI_STUDIO_KEY`, `ELEVENLABS_API_KEY`, `UNSTRUCTURED_API_KEY`, `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`, `REDIS_DB_URI` / `REDIS_CACHE_ID` / `REDIS_KEY`, `GCP_CONNECTION_NAME` / `GCP_CLOUD_DB_USER` / `GCP_CLOUD_DB_PWD` / `GCP_DB_NAME` / `PRIVATE_IP` / `DB_ROOT_CERT`, and the serving settings (`SERVING_API_KEY`, `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S`, `MAX_BATCH_SIZE`, ...). See README sections 1, 8 and 9.
+`Z_AI_API_KEY`, `GOOGLE_AI_STUDIO_KEY`, `ELEVENLABS_API_KEY`, `UNSTRUCTURED_API_KEY`, `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`, `REDIS_DB_URI` / `REDIS_CACHE_ID` / `REDIS_KEY`, `GCP_CONNECTION_NAME` / `GCP_CLOUD_DB_USER` / `GCP_CLOUD_DB_PWD` / `GCP_DB_NAME` / `PRIVATE_IP` / `DB_ROOT_CERT`, `PINECONE_KEY`, and the serving settings (`SERVING_API_KEY`, `LLM_MODEL`, `MAX_CONCURRENT_LLM_CALLS`, `REQUEST_TIMEOUT_S`, `LLM_TIMEOUT_S`, `MAX_BATCH_SIZE`, ...). See README sections 1, 8 and 9.
 
 ## Known issues
 

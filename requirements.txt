@@ -51,3 +51,5 @@ sqlalchemy-pytds
 sqlalchemy
 alembic
 gcloud
+pinecone 
+pinecone[async]

@@ -95,10 +95,24 @@
 # from llm.observability.
 
 
-from database.gcp.cloud_sql_connector import connect_with_connector
-# from database.gcp.dummy_data import push_dummy_data
-from database.gcp.db_functions import list_tables
+# from database.gcp.cloud_sql_connector import connect_with_connector
+# # from database.gcp.dummy_data import push_dummy_data
+# from database.gcp.db_functions import list_tables
 
-connect_with_connector()
-list_tables()
-# push_dummy_data()
+# connect_with_connector()
+# list_tables()
+# # push_dummy_data()
+
+
+from rag.helpers.chunk_embeddings import iterate_chunk_vectorize
+from vector_db.pinecone_func.insert_data import insert_chunks_pinecone
+
+# Iterate Chunk Vectorize
+
+chunked_docs = iterate_chunk_vectorize(
+    md_file_dir = f'data/rag_docs', metadata_json_path = 'data/rag_docs/metadata.json', 
+    persist_directory = ''
+)
+
+
+insert_chunks_pinecone(chunked_docs)
